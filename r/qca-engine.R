@@ -191,20 +191,48 @@ normal_solution <- function(solution, kind, conditions, labels, intermediate = F
   if (intermediate) {
     selected <- solution$i.sol[[1]]
     terms <- selected$solution
-    fit <- selected$IC$overall$sol.incl.cov[1, , drop = FALSE]
+    ic <- selected$IC
   } else {
     terms <- solution$solution[[1]]
-    fit <- solution$IC$sol.incl.cov[1, , drop = FALSE]
+    ic <- solution$IC
+  }
+  fit <- if (!is.null(ic$overall)) {
+    ic$overall$sol.incl.cov[1, , drop = FALSE]
+  } else if (!is.null(ic$individual) && length(ic$individual) > 0) {
+    ic$individual[[1]]$sol.incl.cov[1, , drop = FALSE]
+  } else {
+    ic$sol.incl.cov[1, , drop = FALSE]
+  }
+  path_fit <- if (!is.null(ic$individual) && length(ic$individual) > 0) {
+    ic$individual[[1]]$incl.cov
+  } else {
+    ic$incl.cov
   }
   display_terms <- vapply(terms, display_term, character(1), conditions = conditions, labels = labels)
+  patterns <- vapply(terms, term_pattern, character(1), conditions = conditions)
+  metric_value <- function(row, column) {
+    if (is.null(path_fit) || nrow(path_fit) < row || !column %in% colnames(path_fit)) return(NA_real_)
+    as.numeric(path_fit[[column]][[row]])
+  }
+  path_metrics <- lapply(seq_along(terms), function(index) {
+    list(
+      term = unname(display_terms[[index]]),
+      pattern = unname(patterns[[index]]),
+      consistency = metric_value(index, "inclS"),
+      pri = metric_value(index, "PRI"),
+      rawCoverage = metric_value(index, "covS"),
+      uniqueCoverage = metric_value(index, "covU")
+    )
+  })
   list(
     kind = kind,
-    patterns = vapply(terms, term_pattern, character(1), conditions = conditions),
+    patterns = patterns,
     terms = unname(display_terms),
     formula = paste(display_terms, collapse = " + "),
     consistency = as.numeric(fit$inclS[[1]]),
     pri = as.numeric(fit$PRI[[1]]),
-    coverage = as.numeric(fit$covS[[1]])
+    coverage = as.numeric(fit$covS[[1]]),
+    pathMetrics = unname(path_metrics)
   )
 }
 
